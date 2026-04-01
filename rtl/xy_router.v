@@ -7,12 +7,11 @@
 // destination router and the Local port is selected for ejection.
 // Port encoding: Local=5'b00001, North=5'b00010, South=5'b00100,
 //                East=5'b01000, West=5'b10000.
-// Synthesizable for Vivado 2025.2.
 
 `timescale 1ns / 1ps
 
 module xy_router #(
-    parameter COORD_WIDTH = 2
+    parameter COORD_WIDTH = 1
 )(
     input  wire [COORD_WIDTH-1:0] curr_x,
     input  wire [COORD_WIDTH-1:0] curr_y,

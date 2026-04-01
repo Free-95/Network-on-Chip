@@ -2,7 +2,7 @@
 // Testbench for input_buffer_fifo. Verifies: reset behaviour, sequential writes,
 // sequential reads, full assertion and write-blocking, empty assertion and
 // read-blocking, simultaneous read+write (count stability), and wrap-around of
-// circular pointers. Designed for Vivado 2025.2 Simulation (xsim).
+// circular pointers.
 
 `timescale 1ns / 1ps
 
@@ -43,7 +43,7 @@ module tb_input_buffer_fifo;
     task check;
         input [DATA_WIDTH-1:0] expected;
         input [DATA_WIDTH-1:0] actual;
-        input [127:0]          test_name;
+        input [255:0]          test_name;
         begin
             if (expected === actual) begin
                 $display("PASS  [%0t] %s : got %0h", $time, test_name, actual);
@@ -75,7 +75,21 @@ module tb_input_buffer_fifo;
         check(0, full,  "not full after reset");
 
         // ----------------------------------------------------------------
-        // 2. Write DEPTH flits  ->  should assert full
+        // 2. FWFT Immediate Visibility (without asserting rd_en)
+        // ----------------------------------------------------------------
+        @(negedge clk);
+        data_in = 34'hBEEF_CAFE;
+        wr_en   = 1;
+        @(posedge clk); #1;
+        wr_en   = 0;
+        check(34'hBEEF_CAFE, data_out, "FWFT: Data visible without rd_en");
+        
+        rd_en = 1;          // Clear this test case
+        @(posedge clk); #1;
+        rd_en = 0;
+
+        // ----------------------------------------------------------------
+        // 3. Write DEPTH flits  ->  should assert full
         // ----------------------------------------------------------------
         for (i = 0; i < DEPTH; i = i + 1) begin
             @(negedge clk);
@@ -88,7 +102,7 @@ module tb_input_buffer_fifo;
         check(1, full,  "full after DEPTH writes");
 
         // ----------------------------------------------------------------
-        // 3. Attempt extra write while full  ->  count must not change
+        // 4. Attempt extra write while full  ->  count must not change
         // ----------------------------------------------------------------
         @(negedge clk);
         data_in = 34'hDEAD_BEEF;
@@ -98,20 +112,21 @@ module tb_input_buffer_fifo;
         check(1, full, "still full after blocked write");
 
         // ----------------------------------------------------------------
-        // 4. Read all DEPTH flits  ->  check data order (FIFO)
+        // 5. Read all DEPTH flits  ->  check data order (FIFO)
         // ----------------------------------------------------------------
         for (i = 0; i < DEPTH; i = i + 1) begin
             @(negedge clk);
-            rd_en = 1;
-            @(posedge clk); #1;
             check(i + 34'hA00_0000, data_out, "read data in order");
+
+            rd_en = 1;
+            @(posedge clk); #1;            
             rd_en = 0;
         end
         check(1, empty, "empty after reading all flits");
         check(0, full,  "not full after draining");
 
         // ----------------------------------------------------------------
-        // 5. Attempt read while empty  ->  empty must stay asserted
+        // 6. Attempt read while empty  ->  empty must stay asserted
         // ----------------------------------------------------------------
         @(negedge clk);
         rd_en = 1;
@@ -120,7 +135,7 @@ module tb_input_buffer_fifo;
         check(1, empty, "still empty after blocked read");
 
         // ----------------------------------------------------------------
-        // 6. Simultaneous read + write  ->  count stays same
+        // 7. Simultaneous read + write  ->  count stays same
         // ----------------------------------------------------------------
         @(negedge clk); data_in = 34'h1_2345_6789; wr_en = 1;
         @(posedge clk); #1; wr_en = 0;
@@ -133,9 +148,10 @@ module tb_input_buffer_fifo;
         wr_en = 0; rd_en = 0;
         check(0, empty, "not empty after simultaneous rw");
         check(0, full,  "not full after simultaneous rw");
+        check(34'h2_ABCD_EF01, data_out, "Data after simultaneous rw");
 
         // ----------------------------------------------------------------
-        // 7. Wrap-around: fill, drain, fill again
+        // 8. Wrap-around: fill, drain, fill again
         // ----------------------------------------------------------------
         rd_en = 1;
         @(posedge clk); #1; rd_en = 0;
@@ -148,9 +164,11 @@ module tb_input_buffer_fifo;
         check(1, full, "full after wrap-around refill");
 
         for (i = 0; i < DEPTH; i = i + 1) begin
-            @(negedge clk); rd_en = 1;
-            @(posedge clk); #1;
+            @(negedge clk); 
             check(i + 34'hB00_0000, data_out, "wrap-around read order");
+
+            rd_en = 1;
+            @(posedge clk); #1;
             rd_en = 0;
         end
         check(1, empty, "empty after wrap-around drain");

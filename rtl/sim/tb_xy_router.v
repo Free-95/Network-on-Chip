@@ -5,13 +5,13 @@
 // directed tests confirm: X resolves before Y, North/South polarity, all four
 // corner-to-corner diagonal paths, and Local ejection at every node.
 // Purely combinational DUT — all checks use #1 propagation delay.
-// Designed for Vivado 2025.2 (xsim).
 
 `timescale 1ns / 1ps
 
 module tb_xy_router;
 
-    parameter COORD_WIDTH = 2;
+    parameter COORD_WIDTH = 1;
+    parameter max_coord   = (1 << COORD_WIDTH);
 
     reg  [COORD_WIDTH-1:0] curr_x, curr_y, dest_x, dest_y;
     wire [4:0]             out_port_req;
@@ -33,13 +33,13 @@ module tb_xy_router;
     task check;
         input [4:0]   expected;
         input [4:0]   actual;
-        input [127:0] name;
+        input [255:0] name; 
         begin
             if (expected === actual) begin
-                $display("PASS  [%0t] %s : got %05b", $time, name, actual);
+                $display("PASS  [%0t] %0s : got %05b", $time, name, actual);
                 pass_count = pass_count + 1;
             end else begin
-                $display("FAIL  [%0t] %s : expected %05b got %05b",
+                $display("FAIL  [%0t] %0s : expected %05b, got %05b",
                           $time, name, expected, actual);
                 fail_count = fail_count + 1;
             end
@@ -49,78 +49,94 @@ module tb_xy_router;
     task route;
         input [COORD_WIDTH-1:0] cx, cy, dx, dy;
         input [4:0]             expected;
-        input [127:0]           name;
+        input [255:0]           name;
         begin
             curr_x = cx; curr_y = cy;
             dest_x = dx; dest_y = dy;
-            #1;
+            #1; // Wait 1ns for combinational logic to settle
             check(expected, out_port_req, name);
         end
     endtask
 
     initial begin
-        pass_count = 0; fail_count = 0;
-        curr_x = 0; curr_y = 0; dest_x = 0; dest_y = 0;
+        pass_count = 0; 
+        fail_count = 0;
+        curr_x = 0; 
+        curr_y = 0; 
+        dest_x = 0; 
+        dest_y = 0;
         #1;
 
+        $display("=== Starting XY Router Directed Tests ===");
+
+        // Local Node Ejection (Destination matches Current Router)
         route(0,0, 0,0, PORT_LOCAL, "local (0,0)->(0,0)");
         route(1,0, 1,0, PORT_LOCAL, "local (1,0)->(1,0)");
         route(0,1, 0,1, PORT_LOCAL, "local (0,1)->(0,1)");
         route(1,1, 1,1, PORT_LOCAL, "local (1,1)->(1,1)");
 
+        // X-Dimension Routing (Resolves East/West first)
         route(0,0, 1,0, PORT_EAST,  "east  (0,0)->(1,0)");
         route(1,0, 0,0, PORT_WEST,  "west  (1,0)->(0,0)");
         route(0,1, 1,1, PORT_EAST,  "east  (0,1)->(1,1)");
         route(1,1, 0,1, PORT_WEST,  "west  (1,1)->(0,1)");
 
+        // Y-Dimension Routing (Resolves North/South after X matches)
         route(0,0, 0,1, PORT_SOUTH, "south (0,0)->(0,1)");
         route(0,1, 0,0, PORT_NORTH, "north (0,1)->(0,0)");
         route(1,0, 1,1, PORT_SOUTH, "south (1,0)->(1,1)");
         route(1,1, 1,0, PORT_NORTH, "north (1,1)->(1,0)");
 
+        // Diagonal Routing (Should route X-dimension first)
         route(0,0, 1,1, PORT_EAST,  "diag  (0,0)->(1,1): X first -> East");
         route(1,0, 0,1, PORT_WEST,  "diag  (1,0)->(0,1): X first -> West");
         route(0,1, 1,0, PORT_EAST,  "diag  (0,1)->(1,0): X first -> East");
         route(1,1, 0,0, PORT_WEST,  "diag  (1,1)->(0,0): X first -> West");
 
-        route(1,0, 1,1, PORT_SOUTH, "y-hop (1,0)->(1,1): South");
-        route(0,1, 0,0, PORT_NORTH, "y-hop (0,1)->(0,0): North");
-
-        route(0,0, 3,0, PORT_EAST,  "wide  (0,0)->(3,0): East");
-        route(1,0, 3,0, PORT_EAST,  "wide  (1,0)->(3,0): East");
-        route(2,0, 3,0, PORT_EAST,  "wide  (2,0)->(3,0): East");
-        route(3,0, 3,0, PORT_LOCAL, "wide  (3,0)->(3,0): Local");
-
-        route(0,0, 0,3, PORT_SOUTH, "wide  (0,0)->(0,3): South");
-        route(0,2, 0,3, PORT_SOUTH, "wide  (0,2)->(0,3): South");
-        route(0,3, 0,0, PORT_NORTH, "wide  (0,3)->(0,0): North");
-
-        begin : onehot_check
+        begin : exhaustive_functional_check
             integer cx, cy, dx, dy;
-            reg [4:0] result;
-            for (cx = 0; cx < 2; cx = cx + 1) begin
-                for (cy = 0; cy < 2; cy = cy + 1) begin
-                    for (dx = 0; dx < 2; dx = dx + 1) begin
-                        for (dy = 0; dy < 2; dy = dy + 1) begin
+            reg [4:0] expected_port;
+            reg [4:0] result; 
+
+            for (cx = 0; cx < max_coord; cx = cx + 1) begin
+                for (cy = 0; cy < max_coord; cy = cy + 1) begin
+                    for (dx = 0; dx < max_coord; dx = dx + 1) begin
+                        for (dy = 0; dy < max_coord; dy = dy + 1) begin
+                            
                             curr_x = cx; curr_y = cy;
                             dest_x = dx; dest_y = dy;
                             #1;
                             result = out_port_req;
-                            if ((result != 0) && ((result & (result - 1)) == 0)) begin
-                                $display("PASS  [%0t] one-hot (%0d,%0d)->(%0d,%0d): %05b",
-                                         $time, cx, cy, dx, dy, result);
-                                pass_count = pass_count + 1;
-                            end else begin
-                                $display("FAIL  [%0t] one-hot (%0d,%0d)->(%0d,%0d): %05b not one-hot",
-                                         $time, cx, cy, dx, dy, result);
+
+                            if      (dx > cx)  expected_port = PORT_EAST;
+                            else if (dx < cx)  expected_port = PORT_WEST;
+                            else if (dy > cy)  expected_port = PORT_SOUTH;
+                            else if (dy < cy)  expected_port = PORT_NORTH;
+                            else               expected_port = PORT_LOCAL;
+
+                            if ((result == 0) || ((result & (result - 1)) != 0)) begin
+                                $display("FAIL  [%0t] one-hot (%0d,%0d)->(%0d,%0d): %05b not one-hot", 
+                                          $time, cx, cy, dx, dy, result);
                                 fail_count = fail_count + 1;
+                            end 
+                            else if (result !== expected_port) begin
+                                $display("FAIL  [%0t] Logic Error (%0d,%0d)->(%0d,%0d): Expected %05b, Got %05b", 
+                                          $time, cx, cy, dx, dy, expected_port, result);
+                                fail_count = fail_count + 1;
+                            end 
+                            else begin
+                                pass_count = pass_count + 1;
                             end
+
                         end
                     end
                 end
             end
         end
 
+        // ------------------------------------------------------------------------
+        // Simulation Results
+        // ------------------------------------------------------------------------
         $display("\n=== Simulation Complete ===");
         $display("PASSED: %0d  |  FAILED: %0d", pass_count, fail_count);
         if (fail_count == 0)
@@ -131,6 +147,7 @@ module tb_xy_router;
         $finish;
     end
 
+    // Waveform Generation
     initial begin
         $dumpfile("tb_xy_router.vcd");
         $dumpvars(0, tb_xy_router);

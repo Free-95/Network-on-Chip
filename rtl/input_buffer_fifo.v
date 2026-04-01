@@ -3,7 +3,7 @@
 // of a NoC router. Stores incoming flits during congestion or arbitration stalls.
 // Parameterized data width and depth. Uses a fill-count register for full/empty
 // detection. Write pointer advances on wr_en when not full; read pointer advances
-// on rd_en when not empty. Synthesizable for Vivado 2025.2.
+// on rd_en when not empty.
 
 `timescale 1ns / 1ps
 
@@ -33,22 +33,28 @@ module input_buffer_fifo #(
     assign empty = (count == 0);
     assign data_out = mem[rd_ptr];
 
+    // Allow write if not full, OR if full but simultaneously reading
+    wire write_allow = wr_en && (!full || rd_en);
+
+    // Allow read if not empty
+    wire read_allow  = rd_en && !empty;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_ptr <= 0;
             rd_ptr <= 0;
             count  <= 0;
         end else begin
-            if (wr_en && !full) begin
+            if (write_allow) begin
                 mem[wr_ptr] <= data_in;
                 wr_ptr      <= (wr_ptr == DEPTH-1) ? 0 : wr_ptr + 1;
             end
 
-            if (rd_en && !empty) begin
+            if (read_allow) begin
                 rd_ptr <= (rd_ptr == DEPTH-1) ? 0 : rd_ptr + 1;
             end
 
-            case ({wr_en && !full, rd_en && !empty})
+            case ({write_allow, read_allow})
                 2'b10:   count <= count + 1;
                 2'b01:   count <= count - 1;
                 default: count <= count;
