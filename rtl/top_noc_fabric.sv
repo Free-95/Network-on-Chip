@@ -1,183 +1,273 @@
 // top_noc_fabric.sv
-//   Top-level wrapper for the N-Core Mesh Network-on-Chip (NoC).
-//   Instantiates (MESH_X * MESH_Y) Routers and Network Interfaces
-//   and procedurally weaves the cross-coupling wires between adjacent nodes.
-
-// Node Indexing mapping:
-//   Node ID = (Y * MESH_X) + X
-//   Example for 2x2:
-//     Node 0 = (0,0) [Top Left]
-//     Node 1 = (1,0) [Top Right]
-//     Node 2 = (0,1) [Bottom Left]
-//     Node 3 = (1,1) [Bottom Right]
+// Vivado 2025 compatible 2×2 Mesh NoC fabric.
+//
+// VIVADO COMPATIBILITY CHANGES:
+//   • Removed unpacked arrays as port connections (rx_flit[4] → router port).
+//     Vivado rejects unpacked→packed array port bindings.
+//     Fix: declare inter-router wires as flat named signals per-port.
+//   • Removed localparam inside generate blocks (Vivado 2025 may warn/error).
+//   • All internal signals use logic type (in .sv file — fully supported).
+//   • Dependent parameter expressions (PAYLOAD_W, CORE_DATA_W) kept in
+//     parameter list — Vivado supports dependent parameters in #() lists.
+//   • generate-for with named begin blocks — supported.
+//   • NI and router instantiations use explicit named port connections.
+//
+// Node mapping (2×2 mesh):
+//   Node 0 = (x=0, y=0) — top-left
+//   Node 1 = (x=1, y=0) — top-right
+//   Node 2 = (x=0, y=1) — bottom-left
+//   Node 3 = (x=1, y=1) — bottom-right
+//
+// Port indices per router: 0=Local  1=North  2=South  3=East  4=West
 
 `timescale 1ns / 1ps
 
 module mesh_fabric_noc #(
-    parameter MESH_X      = 2,
-    parameter MESH_Y      = 2,
     parameter DATA_WIDTH  = 34,
-    parameter COORD_WIDTH = 1,  
+    parameter COORD_WIDTH = 1,
     parameter FIFO_DEPTH  = 8,
-    parameter TS_WIDTH    = 16
+    parameter TS_WIDTH    = 16,
+    // Derived — kept in parameter list so top-level can override if needed
+    parameter PAYLOAD_W   = DATA_WIDTH - (2*COORD_WIDTH) - 2,
+    parameter CORE_DATA_W = PAYLOAD_W * 2
 )(
     input  logic clk,
     input  logic rst_n,
 
-    localparam FLIT_TYPE_WIDTH = 2;
-    localparam PAYLOAD_WIDTH   = DATA_WIDTH - (2 * COORD_WIDTH) - FLIT_TYPE_WIDTH;
-    localparam CORE_DATA_WIDTH = PAYLOAD_WIDTH * 2;
-    localparam NUM_NODES       = MESH_X * MESH_Y;
+    // Core interfaces — node indexed [3:0] using packed arrays (Vivado-safe)
+    input  logic [3:0][CORE_DATA_W-1:0]  core_tx_data,
+    input  logic [3:0][COORD_WIDTH-1:0]  core_tx_dest_x,
+    input  logic [3:0][COORD_WIDTH-1:0]  core_tx_dest_y,
+    input  logic [3:0]                   core_tx_valid,
+    output logic [3:0]                   core_tx_ready,
 
-    // TX Ports (Core -> NoC)
-    input  logic [NUM_NODES-1:0] [CORE_DATA_WIDTH-1:0] core_tx_data,
-    input  logic [NUM_NODES-1:0] [COORD_WIDTH-1:0]     core_tx_dest_x,
-    input  logic [NUM_NODES-1:0] [COORD_WIDTH-1:0]     core_tx_dest_y,
-    input  logic [NUM_NODES-1:0]                       core_tx_valid,
-    output logic [NUM_NODES-1:0]                       core_tx_ready,
+    output logic [3:0][CORE_DATA_W-1:0]  core_rx_data,
+    output logic [3:0]                   core_rx_valid,
+    input  logic [3:0]                   core_rx_ready,
 
-    // RX Ports (NoC -> Core)
-    output logic [NUM_NODES-1:0] [CORE_DATA_WIDTH-1:0] core_rx_data,
-    output logic [NUM_NODES-1:0]                       core_rx_valid,
-    input  logic [NUM_NODES-1:0]                       core_rx_ready,
-
-    // Latency Measurement
-    output logic [NUM_NODES-1:0] [TS_WIDTH-1:0]        latency_cycles_out,
-    output logic [NUM_NODES-1:0]                       latency_valid
+    output logic [3:0][TS_WIDTH-1:0]     latency_cycles_out,
+    output logic [3:0]                   latency_valid
 );
 
-    // Internal Topology Wiring Matrix
-    // mesh_tx_flit[X][Y][PORT]
-    // Ports: 0=Local, 1=North, 2=South, 3=East, 4=West
-    logic [DATA_WIDTH-1:0] mesh_rx_flit  [MESH_X][MESH_Y][5];
-    logic                  mesh_rx_valid [MESH_X][MESH_Y][5];
-    logic                  mesh_rx_ready [MESH_X][MESH_Y][5];
+    // =========================================================================
+    // NI ↔ Router local-port wires (Port 0) — flat scalars, Vivado-safe
+    // ni_tx = NI transmit → router rx
+    // ni_rx = NI receive  ← router tx
+    // =========================================================================
+    logic [DATA_WIDTH-1:0] ni_tx_flit  [0:3];
+    logic                  ni_tx_valid [0:3];
+    logic                  ni_tx_ready [0:3];
 
-    logic [DATA_WIDTH-1:0] mesh_tx_flit  [MESH_X][MESH_Y][5];
-    logic                  mesh_tx_valid [MESH_X][MESH_Y][5];
-    logic                  mesh_tx_ready [MESH_X][MESH_Y][5];
+    logic [DATA_WIDTH-1:0] ni_rx_flit  [0:3];
+    logic                  ni_rx_valid [0:3];
+    logic                  ni_rx_ready [0:3];
 
-    genvar x, y;
+    // =========================================================================
+    // Router inter-port wires — all flat, named per link
+    // Naming: r<A>_to_r<B>_flit/valid/ready
+    // =========================================================================
+
+    // Link: r0(East/3) ↔ r1(West/4)
+    logic [DATA_WIDTH-1:0] r0_r1_flit;  logic r0_r1_valid; logic r0_r1_ready;
+    logic [DATA_WIDTH-1:0] r1_r0_flit;  logic r1_r0_valid; logic r1_r0_ready;
+
+    // Link: r0(South/2) ↔ r2(North/1)
+    logic [DATA_WIDTH-1:0] r0_r2_flit;  logic r0_r2_valid; logic r0_r2_ready;
+    logic [DATA_WIDTH-1:0] r2_r0_flit;  logic r2_r0_valid; logic r2_r0_ready;
+
+    // Link: r1(South/2) ↔ r3(North/1)
+    logic [DATA_WIDTH-1:0] r1_r3_flit;  logic r1_r3_valid; logic r1_r3_ready;
+    logic [DATA_WIDTH-1:0] r3_r1_flit;  logic r3_r1_valid; logic r3_r1_ready;
+
+    // Link: r2(East/3) ↔ r3(West/4)
+    logic [DATA_WIDTH-1:0] r2_r3_flit;  logic r2_r3_valid; logic r2_r3_ready;
+    logic [DATA_WIDTH-1:0] r3_r2_flit;  logic r3_r2_valid; logic r3_r2_ready;
+
+    // =========================================================================
+    // Router input/output port buses — assembled from flat signals above.
+    // Each router has 5 ports. Declare as packed [4:0][DATA_WIDTH-1:0]
+    // so they match the router_5port port type exactly (no unpacked mismatch).
+    // =========================================================================
+    logic [4:0][DATA_WIDTH-1:0] r0_rx_flit,  r1_rx_flit,  r2_rx_flit,  r3_rx_flit;
+    logic [4:0]                 r0_rx_valid, r1_rx_valid, r2_rx_valid, r3_rx_valid;
+    logic [4:0]                 r0_rx_ready, r1_rx_ready, r2_rx_ready, r3_rx_ready;
+
+    logic [4:0][DATA_WIDTH-1:0] r0_tx_flit,  r1_tx_flit,  r2_tx_flit,  r3_tx_flit;
+    logic [4:0]                 r0_tx_valid, r1_tx_valid, r2_tx_valid, r3_tx_valid;
+    logic [4:0]                 r0_tx_ready, r1_tx_ready, r2_tx_ready, r3_tx_ready;
+
+    // =========================================================================
+    // Port-bus assembly: slot the flat wires into packed [4:0] buses
+    // Port 0=Local  1=North  2=South  3=East  4=West
+    // =========================================================================
+
+    // ----- Router 0 (0,0) -----------------------------------------------
+    // Port 0 Local
+    assign r0_rx_flit[0]  = ni_tx_flit[0];   assign r0_rx_valid[0] = ni_tx_valid[0];
+    assign ni_tx_ready[0] = r0_rx_ready[0];
+    assign ni_rx_flit[0]  = r0_tx_flit[0];   assign ni_rx_valid[0] = r0_tx_valid[0];
+    assign r0_tx_ready[0] = ni_rx_ready[0];
+    // Port 1 North — border tie-off
+    assign r0_rx_flit[1]  = '0;              assign r0_rx_valid[1] = 1'b0;
+    assign r0_tx_ready[1] = 1'b1;
+    // Port 2 South → r2 North
+    assign r0_rx_flit[2]  = r2_r0_flit;     assign r0_rx_valid[2] = r2_r0_valid;
+    assign r2_r0_ready    = r0_rx_ready[2];
+    assign r0_r2_flit     = r0_tx_flit[2];   assign r0_r2_valid    = r0_tx_valid[2];
+    assign r0_tx_ready[2] = r0_r2_ready;
+    // Port 3 East → r1 West
+    assign r0_rx_flit[3]  = r1_r0_flit;     assign r0_rx_valid[3] = r1_r0_valid;
+    assign r1_r0_ready    = r0_rx_ready[3];
+    assign r0_r1_flit     = r0_tx_flit[3];   assign r0_r1_valid    = r0_tx_valid[3];
+    assign r0_tx_ready[3] = r0_r1_ready;
+    // Port 4 West — border tie-off
+    assign r0_rx_flit[4]  = '0;              assign r0_rx_valid[4] = 1'b0;
+    assign r0_tx_ready[4] = 1'b1;
+
+    // ----- Router 1 (1,0) -----------------------------------------------
+    assign r1_rx_flit[0]  = ni_tx_flit[1];   assign r1_rx_valid[0] = ni_tx_valid[1];
+    assign ni_tx_ready[1] = r1_rx_ready[0];
+    assign ni_rx_flit[1]  = r1_tx_flit[0];   assign ni_rx_valid[1] = r1_tx_valid[0];
+    assign r1_tx_ready[0] = ni_rx_ready[1];
+    // Port 1 North — border tie-off
+    assign r1_rx_flit[1]  = '0;              assign r1_rx_valid[1] = 1'b0;
+    assign r1_tx_ready[1] = 1'b1;
+    // Port 2 South → r3 North
+    assign r1_rx_flit[2]  = r3_r1_flit;     assign r1_rx_valid[2] = r3_r1_valid;
+    assign r3_r1_ready    = r1_rx_ready[2];
+    assign r1_r3_flit     = r1_tx_flit[2];   assign r1_r3_valid    = r1_tx_valid[2];
+    assign r1_tx_ready[2] = r1_r3_ready;
+    // Port 3 East — border tie-off
+    assign r1_rx_flit[3]  = '0;              assign r1_rx_valid[3] = 1'b0;
+    assign r1_tx_ready[3] = 1'b1;
+    // Port 4 West ← r0 East
+    assign r1_rx_flit[4]  = r0_r1_flit;     assign r1_rx_valid[4] = r0_r1_valid;
+    assign r0_r1_ready    = r1_rx_ready[4];
+    assign r1_r0_flit     = r1_tx_flit[4];   assign r1_r0_valid    = r1_tx_valid[4];
+    assign r1_tx_ready[4] = r1_r0_ready;
+
+    // ----- Router 2 (0,1) -----------------------------------------------
+    assign r2_rx_flit[0]  = ni_tx_flit[2];   assign r2_rx_valid[0] = ni_tx_valid[2];
+    assign ni_tx_ready[2] = r2_rx_ready[0];
+    assign ni_rx_flit[2]  = r2_tx_flit[0];   assign ni_rx_valid[2] = r2_tx_valid[0];
+    assign r2_tx_ready[0] = ni_rx_ready[2];
+    // Port 1 North ← r0 South
+    assign r2_rx_flit[1]  = r0_r2_flit;     assign r2_rx_valid[1] = r0_r2_valid;
+    assign r0_r2_ready    = r2_rx_ready[1];
+    assign r2_r0_flit     = r2_tx_flit[1];   assign r2_r0_valid    = r2_tx_valid[1];
+    assign r2_tx_ready[1] = r2_r0_ready;
+    // Port 2 South — border tie-off
+    assign r2_rx_flit[2]  = '0;              assign r2_rx_valid[2] = 1'b0;
+    assign r2_tx_ready[2] = 1'b1;
+    // Port 3 East → r3 West
+    assign r2_rx_flit[3]  = r3_r2_flit;     assign r2_rx_valid[3] = r3_r2_valid;
+    assign r3_r2_ready    = r2_rx_ready[3];
+    assign r2_r3_flit     = r2_tx_flit[3];   assign r2_r3_valid    = r2_tx_valid[3];
+    assign r2_tx_ready[3] = r2_r3_ready;
+    // Port 4 West — border tie-off
+    assign r2_rx_flit[4]  = '0;              assign r2_rx_valid[4] = 1'b0;
+    assign r2_tx_ready[4] = 1'b1;
+
+    // ----- Router 3 (1,1) -----------------------------------------------
+    assign r3_rx_flit[0]  = ni_tx_flit[3];   assign r3_rx_valid[0] = ni_tx_valid[3];
+    assign ni_tx_ready[3] = r3_rx_ready[0];
+    assign ni_rx_flit[3]  = r3_tx_flit[0];   assign ni_rx_valid[3] = r3_tx_valid[0];
+    assign r3_tx_ready[0] = ni_rx_ready[3];
+    // Port 1 North ← r1 South
+    assign r3_rx_flit[1]  = r1_r3_flit;     assign r3_rx_valid[1] = r1_r3_valid;
+    assign r1_r3_ready    = r3_rx_ready[1];
+    assign r3_r1_flit     = r3_tx_flit[1];   assign r3_r1_valid    = r3_tx_valid[1];
+    assign r3_tx_ready[1] = r3_r1_ready;
+    // Port 2 South — border tie-off
+    assign r3_rx_flit[2]  = '0;              assign r3_rx_valid[2] = 1'b0;
+    assign r3_tx_ready[2] = 1'b1;
+    // Port 3 East — border tie-off
+    assign r3_rx_flit[3]  = '0;              assign r3_rx_valid[3] = 1'b0;
+    assign r3_tx_ready[3] = 1'b1;
+    // Port 4 West ← r2 East
+    assign r3_rx_flit[4]  = r2_r3_flit;     assign r3_rx_valid[4] = r2_r3_valid;
+    assign r2_r3_ready    = r3_rx_ready[4];
+    assign r3_r2_flit     = r3_tx_flit[4];   assign r3_r2_valid    = r3_tx_valid[4];
+    assign r3_tx_ready[4] = r3_r2_ready;
+
+    // =========================================================================
+    // Network Interface instantiation (4×)
+    // =========================================================================
+    genvar n;
     generate
-        for (x = 0; x < MESH_X; x++) begin : gen_col
-            for (y = 0; y < MESH_Y; y++) begin : gen_row
-                
-                // Flattened Node ID for core port mapping
-                localparam NODE = (y * MESH_X) + x;
-
-                // ------------------------------------------------------------
-                // Instantiate Network Interface (NI)
-                // ------------------------------------------------------------
-                network_interface #(
-                    .DATA_WIDTH(DATA_WIDTH), 
-                    .COORD_WIDTH(COORD_WIDTH), 
-                    .TS_WIDTH(TS_WIDTH)
-                ) ni_inst (
-                    .clk(clk), 
-                    .rst_n(rst_n),
-                    
-                    // Connected to Top-Level Core Pins
-                    .core_tx_data  (core_tx_data[NODE]),
-                    .core_tx_dest_x(core_tx_dest_x[NODE]),
-                    .core_tx_dest_y(core_tx_dest_y[NODE]),
-                    .core_tx_valid (core_tx_valid[NODE]),
-                    .core_tx_ready (core_tx_ready[NODE]),
-
-                    .core_rx_data  (core_rx_data[NODE]),
-                    .core_rx_valid (core_rx_valid[NODE]),
-                    .core_rx_ready (core_rx_ready[NODE]),
-
-                    // Connected to Router's Local Port [0]
-                    .router_tx_flit  (mesh_rx_flit[x][y][0]),
-                    .router_tx_valid (mesh_rx_valid[x][y][0]),
-                    .router_tx_ready (mesh_rx_ready[x][y][0]),
-
-                    .router_rx_flit  (mesh_tx_flit[x][y][0]),
-                    .router_rx_valid (mesh_tx_valid[x][y][0]),
-                    .router_rx_ready (mesh_tx_ready[x][y][0]),
-
-                    .latency_cycles_out(latency_cycles_out[NODE]),
-                    .latency_valid     (latency_valid[NODE])
-                );
-
-                // ------------------------------------------------------------
-                // Instantiate Local Router
-                // ------------------------------------------------------------
-                router_5port #(
-                    .DATA_WIDTH(DATA_WIDTH), 
-                    .COORD_WIDTH(COORD_WIDTH), 
-                    .FIFO_DEPTH(FIFO_DEPTH)
-                ) router_inst (
-                    .clk(clk), 
-                    .rst_n(rst_n),
-                    
-                    // Static Hardware Coordinates
-                    .router_x    (COORD_WIDTH'(x)),
-                    .router_y    (COORD_WIDTH'(y)),
-
-                    .rx_flit_arr (mesh_rx_flit[x][y]),
-                    .rx_valid_arr(mesh_rx_valid[x][y]),
-                    .rx_ready_arr(mesh_rx_ready[x][y]),
-
-                    .tx_flit_arr (mesh_tx_flit[x][y]),
-                    .tx_valid_arr(mesh_tx_valid[x][y]),
-                    .tx_ready_arr(mesh_tx_ready[x][y])
-                );
-
-                // ------------------------------------------------------------
-                // Mesh Wiring 
-                // ------------------------------------------------------------
-                
-                // NORTH PORT [1] -> Connects to Router Above's SOUTH PORT [2]
-                if (y > 0) begin
-                    assign mesh_rx_flit[x][y][1]    = mesh_tx_flit[x][y-1][2]; 
-                    assign mesh_rx_valid[x][y][1]   = mesh_tx_valid[x][y-1][2];
-                    assign mesh_tx_ready[x][y-1][2] = mesh_rx_ready[x][y][1];
-                end else begin
-                    // North Edge Boundary Tie-off
-                    assign mesh_rx_valid[x][y][1] = 1'b0;
-                    assign mesh_rx_flit[x][y][1]  = '0;
-                    assign mesh_tx_ready[x][y][1] = 1'b1; // Never stall if packet hits edge
-                end
-
-                // SOUTH PORT [2] -> Connects to Router Below's NORTH PORT [1]
-                if (y < MESH_Y - 1) begin
-                    assign mesh_rx_flit[x][y][2]    = mesh_tx_flit[x][y+1][1]; 
-                    assign mesh_rx_valid[x][y][2]   = mesh_tx_valid[x][y+1][1];
-                    assign mesh_tx_ready[x][y+1][1] = mesh_rx_ready[x][y][2];
-                end else begin
-                    // South Edge Boundary Tie-off
-                    assign mesh_rx_valid[x][y][2] = 1'b0;
-                    assign mesh_rx_flit[x][y][2]  = '0;
-                    assign mesh_tx_ready[x][y][2] = 1'b1;
-                end
-
-                // EAST PORT [3] -> Connects to Router Right's WEST PORT [4]
-                if (x < MESH_X - 1) begin
-                    assign mesh_rx_flit[x][y][3]    = mesh_tx_flit[x+1][y][4]; 
-                    assign mesh_rx_valid[x][y][3]   = mesh_tx_valid[x+1][y][4];
-                    assign mesh_tx_ready[x+1][y][4] = mesh_rx_ready[x][y][3];
-                end else begin
-                    // East Edge Boundary Tie-off
-                    assign mesh_rx_valid[x][y][3] = 1'b0;
-                    assign mesh_rx_flit[x][y][3]  = '0;
-                    assign mesh_tx_ready[x][y][3] = 1'b1;
-                end
-
-                // WEST PORT [4] -> Connects to Router Left's EAST PORT [3]
-                if (x > 0) begin
-                    assign mesh_rx_flit[x][y][4]    = mesh_tx_flit[x-1][y][3]; 
-                    assign mesh_rx_valid[x][y][4]   = mesh_tx_valid[x-1][y][3];
-                    assign mesh_tx_ready[x-1][y][3] = mesh_rx_ready[x][y][4];
-                end else begin
-                    // West Edge Boundary Tie-off
-                    assign mesh_rx_valid[x][y][4] = 1'b0;
-                    assign mesh_rx_flit[x][y][4]  = '0;
-                    assign mesh_tx_ready[x][y][4] = 1'b1;
-                end
-
-            end
+        for (n = 0; n < 4; n = n + 1) begin : gen_ni
+            network_interface #(
+                .DATA_WIDTH  (DATA_WIDTH),
+                .COORD_WIDTH (COORD_WIDTH),
+                .TS_WIDTH    (TS_WIDTH)
+            ) ni_inst (
+                .clk               (clk),
+                .rst_n             (rst_n),
+                .core_tx_data      (core_tx_data[n]),
+                .core_tx_dest_x    (core_tx_dest_x[n]),
+                .core_tx_dest_y    (core_tx_dest_y[n]),
+                .core_tx_valid     (core_tx_valid[n]),
+                .core_tx_ready     (core_tx_ready[n]),
+                .core_rx_data      (core_rx_data[n]),
+                .core_rx_valid     (core_rx_valid[n]),
+                .core_rx_ready     (core_rx_ready[n]),
+                .router_tx_flit    (ni_tx_flit[n]),
+                .router_tx_valid   (ni_tx_valid[n]),
+                .router_tx_ready   (ni_tx_ready[n]),
+                .router_rx_flit    (ni_rx_flit[n]),
+                .router_rx_valid   (ni_rx_valid[n]),
+                .router_rx_ready   (ni_rx_ready[n]),
+                .latency_cycles_out(latency_cycles_out[n]),
+                .latency_valid     (latency_valid[n])
+            );
         end
     endgenerate
+
+    // =========================================================================
+    // Router instantiation (4×) — explicit instances, no generate needed
+    // =========================================================================
+    router_5port #(
+        .DATA_WIDTH  (DATA_WIDTH),
+        .COORD_WIDTH (COORD_WIDTH),
+        .FIFO_DEPTH  (FIFO_DEPTH)
+    ) r0_inst (
+        .clk          (clk),          .rst_n        (rst_n),
+        .router_x     (1'b0),         .router_y     (1'b0),
+        .rx_flit_arr  (r0_rx_flit),   .rx_valid_arr (r0_rx_valid),  .rx_ready_arr (r0_rx_ready),
+        .tx_flit_arr  (r0_tx_flit),   .tx_valid_arr (r0_tx_valid),  .tx_ready_arr (r0_tx_ready)
+    );
+
+    router_5port #(
+        .DATA_WIDTH  (DATA_WIDTH),
+        .COORD_WIDTH (COORD_WIDTH),
+        .FIFO_DEPTH  (FIFO_DEPTH)
+    ) r1_inst (
+        .clk          (clk),          .rst_n        (rst_n),
+        .router_x     (1'b1),         .router_y     (1'b0),
+        .rx_flit_arr  (r1_rx_flit),   .rx_valid_arr (r1_rx_valid),  .rx_ready_arr (r1_rx_ready),
+        .tx_flit_arr  (r1_tx_flit),   .tx_valid_arr (r1_tx_valid),  .tx_ready_arr (r1_tx_ready)
+    );
+
+    router_5port #(
+        .DATA_WIDTH  (DATA_WIDTH),
+        .COORD_WIDTH (COORD_WIDTH),
+        .FIFO_DEPTH  (FIFO_DEPTH)
+    ) r2_inst (
+        .clk          (clk),          .rst_n        (rst_n),
+        .router_x     (1'b0),         .router_y     (1'b1),
+        .rx_flit_arr  (r2_rx_flit),   .rx_valid_arr (r2_rx_valid),  .rx_ready_arr (r2_rx_ready),
+        .tx_flit_arr  (r2_tx_flit),   .tx_valid_arr (r2_tx_valid),  .tx_ready_arr (r2_tx_ready)
+    );
+
+    router_5port #(
+        .DATA_WIDTH  (DATA_WIDTH),
+        .COORD_WIDTH (COORD_WIDTH),
+        .FIFO_DEPTH  (FIFO_DEPTH)
+    ) r3_inst (
+        .clk          (clk),          .rst_n        (rst_n),
+        .router_x     (1'b1),         .router_y     (1'b1),
+        .rx_flit_arr  (r3_rx_flit),   .rx_valid_arr (r3_rx_valid),  .rx_ready_arr (r3_rx_ready),
+        .tx_flit_arr  (r3_tx_flit),   .tx_valid_arr (r3_tx_valid),  .tx_ready_arr (r3_tx_ready)
+    );
 
 endmodule
