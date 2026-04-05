@@ -111,7 +111,8 @@ module router_5port #(
 
     generate
         for (out_port = 0; out_port < 5; out_port = out_port + 1) begin: gen_tx_valid   
-            assign tx_valid_arr[out_port] = (crossbar_grants[out_port] != 5'b0);
+            assign tx_valid_arr[out_port] = (crossbar_grants[out_port] != 5'b0) && 
+                                            |(crossbar_grants[out_port] & ~fifo_empty);
         end
 
         for (in_port = 0; in_port < 5; in_port = in_port + 1) begin: gen_fifo_rd

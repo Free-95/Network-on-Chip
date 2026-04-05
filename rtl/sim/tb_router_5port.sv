@@ -74,8 +74,8 @@ module tb_router_5port;
 
     task automatic reset_router();
         begin
-            rx_flit  = '0;
-            rx_valid = '0;
+            rx_flit  = 0;
+            rx_valid = 0;
             tx_ready = {5{1'b1}}; 
             rst_n = 1'b1;
             #1;
@@ -100,31 +100,31 @@ module tb_router_5port;
         
         // Router at (0,0) -> Send East to (1,0)
         router_x = 1'b0; router_y = 1'b0;
-        rx_flit[0] = {1'b1, 1'b0, 32'h0000_EAE0}; 
+        rx_flit[0] = {1'b1, 1'b0, 32'hC000_EAE0}; 
         rx_valid[0] = 1'b1;
         @(negedge clk); rx_valid[0] = 1'b0;
-        check_tx(3, 1'b1, 1'b0, 32'h0000_EAE0, "Test 1, Corner (0,0) -> East");
+        check_tx(3, 1'b1, 1'b0, 32'hC000_EAE0, "Test 1, Corner (0,0) -> East");
         @(negedge clk);
 
         // Router at (1,1) -> Send North to (1,0)
         router_x = 1'b1; router_y = 1'b1;
-        rx_flit[0] = {1'b1, 1'b0, 32'h0000_00A0}; rx_valid[0] = 1'b1;
+        rx_flit[0] = {1'b1, 1'b0, 32'hC000_00A0}; rx_valid[0] = 1'b1;
         @(negedge clk); rx_valid[0] = 1'b0;
-        check_tx(1, 1'b1, 1'b0, 32'h0000_00A0, "Test 1, Corner (1,1) -> North");
+        check_tx(1, 1'b1, 1'b0, 32'hC000_00A0, "Test 1, Corner (1,1) -> North");
         @(negedge clk);
 
         // Router at (1,0) -> Send West to (0,0)
         router_x = 1'b1; router_y = 1'b0;
-        rx_flit[0] = {1'b0, 1'b0, 32'h0000_00E5}; rx_valid[0] = 1'b1;
+        rx_flit[0] = {1'b0, 1'b0, 32'hC000_00E5}; rx_valid[0] = 1'b1;
         @(negedge clk); rx_valid[0] = 1'b0;
-        check_tx(4, 1'b0, 1'b0, 32'h0000_00E5, "Test 1, Corner (1,0) -> West");
+        check_tx(4, 1'b0, 1'b0, 32'hC000_00E5, "Test 1, Corner (1,0) -> West");
         @(negedge clk);
 
         // Router at (1,0) -> Send South to (1,1)
         router_x = 1'b1; router_y = 1'b0;
-        rx_flit[0] = {1'b1, 1'b1, 32'h0000_50E5}; rx_valid[0] = 1'b1;
+        rx_flit[0] = {1'b1, 1'b1, 32'hC000_50E5}; rx_valid[0] = 1'b1;
         @(negedge clk); rx_valid[0] = 1'b0;
-        check_tx(2, 1'b1, 1'b1, 32'h0000_50E5, "Test 1, Corner (1,0) -> South");
+        check_tx(2, 1'b1, 1'b1, 32'hC000_50E5, "Test 1, Corner (1,0) -> South");
         @(negedge clk);
 
         // ====================================================================
@@ -136,15 +136,15 @@ module tb_router_5port;
         router_x = 1'b0; router_y = 1'b0;
         @(negedge clk);
         
-        rx_flit[0] = {1'b1, 1'b0, 32'hAAAA_1111}; rx_valid[0] = 1'b1; // Local(0) -> East(3)
-        rx_flit[3] = {1'b0, 1'b1, 32'hBBBB_2222}; rx_valid[3] = 1'b1; // EastRx(3) -> South(2)
+        rx_flit[0] = {1'b1, 1'b0, 32'hCAAA_1111}; rx_valid[0] = 1'b1; // Local(0) -> East(3)
+        rx_flit[3] = {1'b0, 1'b1, 32'hCBBB_2222}; rx_valid[3] = 1'b1; // EastRx(3) -> South(2)
         rx_flit[2] = {1'b0, 1'b0, 32'hCCCC_3333}; rx_valid[2] = 1'b1; // SouthRx(2)-> Local(0)
         
         @(negedge clk);
         rx_valid = 0; 
         
-        check_tx(3, 1'b1, 1'b0, 32'hAAAA_1111, "Test 2, 3-Way Parallel (Local->East)");
-        check_tx(2, 1'b0, 1'b1, 32'hBBBB_2222, "Test 2, 3-Way Parallel (EastRx->South)");
+        check_tx(3, 1'b1, 1'b0, 32'hCAAA_1111, "Test 2, 3-Way Parallel (Local->East)");
+        check_tx(2, 1'b0, 1'b1, 32'hCBBB_2222, "Test 2, 3-Way Parallel (EastRx->South)");
         check_tx(0, 1'b0, 1'b0, 32'hCCCC_3333, "Test 2, 3-Way Parallel (SouthRx->Local)");
         @(negedge clk);
 
@@ -160,7 +160,7 @@ module tb_router_5port;
         @(negedge clk);
         for(int i=0; i<5; i++) begin
             logic [31:0] safe_payload;
-            safe_payload = 32'h3000_0000 + i;
+            safe_payload = 32'hC000_0000 + i;
             rx_flit[i]  = {1'b1, 1'b0, safe_payload}; 
             rx_valid[i] = 1;
         end
@@ -190,7 +190,7 @@ module tb_router_5port;
         tx_ready[3] = 1'b0; 
         
         @(negedge clk);
-        rx_flit[0]  = {1'b1, 1'b0, 32'h1EAD_BEEF};
+        rx_flit[0]  = {1'b1, 1'b0, 32'hDEAD_BEEF};
         rx_valid[0] = 1'b1;
         @(negedge clk);
         rx_valid[0] = 1'b0;        
@@ -206,7 +206,7 @@ module tb_router_5port;
         end
 
         tx_ready[3] = 1'b1; // Release the stall
-        check_tx(3, 1'b1, 1'b0, 32'h1EAD_BEEF, "Test 4, Flow Control Stall - Flit released successfully");
+        check_tx(3, 1'b1, 1'b0, 32'hDEAD_BEEF, "Test 4, Flow Control Stall - Flit released successfully");
         @(negedge clk);
 
 
@@ -224,7 +224,7 @@ module tb_router_5port;
             #1;
             begin
                 logic [31:0] safe_payload;
-                safe_payload = 32'h0000_0000 + i;
+                safe_payload = 32'hC000_0000 + i;
                 rx_flit[0] = {1'b1, 1'b0, safe_payload};
                 rx_valid[0] = 1'b1;
             end

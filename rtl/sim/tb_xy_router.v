@@ -33,7 +33,7 @@ module tb_xy_router;
     task check;
         input [4:0]   expected;
         input [4:0]   actual;
-        input [255:0] name; 
+        input [299:0] name; 
         begin
             if (expected === actual) begin
                 $display("PASS  [%0t] %0s : got %05b", $time, name, actual);
@@ -49,7 +49,7 @@ module tb_xy_router;
     task route;
         input [COORD_WIDTH-1:0] cx, cy, dx, dy;
         input [4:0]             expected;
-        input [255:0]           name;
+        input [299:0]           name;
         begin
             curr_x = cx; curr_y = cy;
             dest_x = dx; dest_y = dy;

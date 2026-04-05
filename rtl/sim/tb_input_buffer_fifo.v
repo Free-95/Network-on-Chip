@@ -43,7 +43,7 @@ module tb_input_buffer_fifo;
     task check;
         input [DATA_WIDTH-1:0] expected;
         input [DATA_WIDTH-1:0] actual;
-        input [255:0]          test_name;
+        input [399:0]          test_name;
         begin
             if (expected === actual) begin
                 $display("PASS  [%0t] %s : got %0h", $time, test_name, actual);
@@ -172,6 +172,53 @@ module tb_input_buffer_fifo;
             rd_en = 0;
         end
         check(1, empty, "empty after wrap-around drain");
+
+        // ----------------------------------------------------------------
+        // 9. Strict NoC Handshake: RW while FULL
+        // ----------------------------------------------------------------
+        for (i = 0; i < DEPTH; i = i + 1) begin
+            @(negedge clk); 
+            data_in = i + 34'hC00_0000; 
+            wr_en = 1;
+            @(posedge clk); #1;
+        end
+        wr_en = 0;
+        
+        @(negedge clk);
+        data_in = 34'hDEAD_C0DE;
+        wr_en   = 1;
+        rd_en   = 1;
+        @(posedge clk); #1;
+        wr_en = 0; 
+        rd_en = 0;
+        
+        check(0, full, "FIFO no longer full after RW on full");
+        for (i = 1; i < DEPTH; i = i + 1) begin
+            @(negedge clk); 
+            rd_en = 1;
+            @(posedge clk); #1; 
+            rd_en = 0;
+        end
+        check(1, empty, "FIFO empty, ensuring dropped write wasn't queued");
+
+        // ----------------------------------------------------------------
+        // 10. Strict NoC Handshake: RW while EMPTY
+        // ----------------------------------------------------------------
+        @(negedge clk);
+        data_in = 34'hABCD_FACE;
+        wr_en   = 1;
+        rd_en   = 1; 
+        @(posedge clk); #1;
+        wr_en = 0; 
+        rd_en = 0;
+        
+        check(0, empty, "FIFO not empty after RW on empty");
+        check(34'hABCD_FACE, data_out, "Data safely written despite invalid read request");
+        
+        @(negedge clk); 
+        rd_en = 1;
+        @(posedge clk); #1; 
+        rd_en = 0;
 
         // ----------------------------------------------------------------
         // Summary
