@@ -1,15 +1,14 @@
 // uart_tx.sv
 // 8N1 UART transmitter.
-// Vivado 2025 compatible SystemVerilog.
-//
-// Interface (matches uart_noc_top.sv instantiation):
+
+// Interface:
 //   .clk      clock
 //   .rst_n    active-low synchronous reset
 //   .tx_data  [7:0] byte to transmit
 //   .tx_valid byte presented (must hold until tx_ready)
 //   .tx_ready 1 when idle and accepting new byte  (registered output)
 //   .tx       serial output line (idle-high)
-//
+
 // tx_ready is de-asserted one cycle after tx_valid is sampled, and
 // re-asserted one cycle after the stop bit completes.
 

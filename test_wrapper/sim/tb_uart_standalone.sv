@@ -17,13 +17,6 @@
 //
 // PASS/FAIL: $display reports each check; final tally at end.
 //            $finish always called — never hangs.
-//
-// Vivado 2025:
-//   • .sv extension — uses SystemVerilog throughout
-//   • No automatic tasks across module boundaries
-//   • No force/release
-//   • No $random (uses explicit constants)
-//   • Watchdog always fires $finish
 // =============================================================================
 
 `timescale 1ns / 1ps

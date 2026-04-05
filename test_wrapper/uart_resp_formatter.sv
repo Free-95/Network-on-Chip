@@ -1,22 +1,33 @@
 // uart_resp_formatter.sv
-// Formats a received NoC payload + metadata into a UART byte stream.
+//   Serializes a received NoC payload and latency metadata into a binary UART byte stream.
+//   This is the module that sends the "Visual Ping" back to your PC.
+
+// Protocol (Binary Response Framing):
+//   A complete response consists of 1 Header Byte, PAYLOAD_BYTES of data, 
+//   and 2 bytes of Latency information.
 //
-// Output byte stream for each received packet:
-//   Byte 0:      0xB0 | src_node[1:0]   (response header)
-//   Bytes 1..N:  payload bytes MSB-first
-//   Byte N+1:    latency high byte
-//   Byte N+2:    latency low byte
+//   Byte 0: Header Byte
+//           [7:4] = 4'hB  (Response Nibble indicating NoC output)
+//           [3:2] = 2'b00 (Reserved/Unused)
+//           [1:0] = Source Node ID (0 to 3)
+//           Example: 0xB3 means "Response bounced from Node 3"
 //
-// Interface (matches uart_noc_top.sv):
-//   .fmt_valid        pulse: new packet to format
-//   .fmt_src_node     [1:0]
-//   .fmt_payload      [PAYLOAD_BYTES*8-1:0]
-//   .fmt_payload_len  [$clog2(PAYLOAD_BYTES+1)-1:0]
-//   .fmt_latency      [TS_WIDTH-1:0]
-//   .tx_data          [7:0]  → uart_tx
-//   .tx_valid                → uart_tx
-//   .tx_ready                ← uart_tx
-//   .fmt_busy         held high while serialising (gate new fmt_valid from arbiter)
+//   Bytes 1..PAYLOAD_BYTES: Raw payload data (transmitted MSB first)
+//
+//   Byte N+1: Latency High Byte
+//   Byte N+2: Latency Low Byte
+
+// Example Transmission (PAYLOAD_BYTES = 3):
+//   If Node 3 returns payload 0x48454C with a latency of 30 cycles (0x001E):
+//   0xB3  0x48  0x45  0x4C  0x00  0x1E
+
+// Interface:
+//   .fmt_valid        Pulse high to lock in data and begin UART transmission
+//   .fmt_src_node     [1:0] Node that bounced the packet back
+//   .fmt_payload      [PAYLOAD_BYTES*8-1:0] Payload to transmit
+//   .fmt_latency      [TS_WIDTH-1:0] Clock cycles taken for round-trip
+//   .tx_data          [7:0] Pushed to uart_tx module
+//   .fmt_busy         Held high while serializing. Gates new inputs.
 
 `timescale 1ns / 1ps
 
@@ -69,21 +80,21 @@ module uart_resp_formatter #(
                 frame[k] <= 8'd0;
         end else begin
             if (!sending && fmt_valid) begin
-                // Capture response frame
+                // Byte 0: Capture response header (0xB0 | src_node)
                 frame[0] <= {6'b101100, fmt_src_node};  // 0xB0 | src_node
 
-                // Payload bytes: MSB-first
+                // Bytes 1..PAYLOAD: Extract payload bytes (MSB-first)
                 for (k = 0; k < PAYLOAD_BYTES; k = k + 1)
                     frame[1 + k] <= fmt_payload[(PAYLOAD_BYTES - 1 - k)*8 +: 8];
 
-                // Latency: high byte then low byte
+                // Bytes N+1, N+2: Latency high byte then low byte
                 frame[1 + PAYLOAD_BYTES]     <= fmt_latency[TS_WIDTH-1 -: 8];
                 frame[1 + PAYLOAD_BYTES + 1] <= fmt_latency[7:0];
 
                 byte_idx <= '0;
                 sending  <= 1'b1;
             end else if (sending && tx_ready) begin
-                // uart_tx accepted current byte
+                // uart_tx accepted current byte, move to next
                 if (byte_idx == IDX_W'(FRAME_BYTES - 1)) begin
                     sending <= 1'b0;
                 end else begin

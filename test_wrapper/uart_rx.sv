@@ -1,8 +1,7 @@
 // uart_rx.sv
-// 8N1 UART receiver with mid-bit sampling.
-// Vivado 2025 compatible SystemVerilog.
-//
-// Interface (matches uart_noc_top.sv instantiation):
+//   8N1 UART receiver with mid-bit sampling.
+
+// Interface:
 //   .clk       clock
 //   .rst_n     active-low reset
 //   .rx        serial input line  (idle-high)

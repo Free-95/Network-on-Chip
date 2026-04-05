@@ -1,28 +1,28 @@
 // uart_cmd_parser.sv
-// Parses the simple text command:   SEND <node> <payload_bytes><CR>
+//   Parses incoming binary UART frames and translates them into NoC injection commands.
+
+// Protocol (Binary Framing):
+//   A complete command consists of 1 Header Byte followed by PAYLOAD_BYTES of data.
 //
-// Protocol (all ASCII, CR = 0x0D terminates):
-//   "SEND 3 AB\r"
-//    ^^^^   ^  ^^
-//    verb   |  raw hex payload chars (PAYLOAD_BYTES * 2 hex digits)
-//           dest node digit (0-3)
+//   Byte 0: Header Byte
+//           [7:4] = 4'hA  (Command Nibble indicating "SEND")
+//           [3:2] = 2'b00 (Reserved/Unused)
+//           [1:0] = Destination Node ID (0 to 3)
+//           Example: 0xA3 means "Send to Node 3"
 //
-// Simpler binary protocol actually used in testbench:
-//   Byte 0: command byte  0xA0 | dest_node[1:0]
-//   Bytes 1..PAYLOAD_BYTES: raw payload bytes
-//
-// This matches what tb_uart_noc drives:
-//   send_byte(8'hA0 | dest);   // cmd
-//   send_byte(payload_hi);
-//   send_byte(payload_lo);     // only PAYLOAD_BYTES=3 bytes but we use 2 for simplicity
-//
-// Interface (matches uart_noc_top.sv):
-//   .rx_data         [7:0]               from uart_rx
-//   .rx_valid                            from uart_rx
-//   .cmd_valid                           pulses one cycle when command complete
-//   .cmd_dest_node   [1:0]              destination node index 0-3
-//   .cmd_payload     [PAYLOAD_BYTES*8-1:0]  payload bytes
-//   .cmd_payload_len [$clog2(PAYLOAD_BYTES+1)-1:0]  always PAYLOAD_BYTES
+//   Bytes 1..PAYLOAD_BYTES: Raw payload data (received MSB first)
+
+// Example Transmission (PAYLOAD_BYTES = 3):
+//   To send the 24-bit hex payload 0x414243 to Node 3, the PC transmits 4 bytes:
+//   0xA3  0x41  0x42  0x43
+
+// Interface:
+//   .rx_data         [7:0]                         Raw byte from uart_rx
+//   .rx_valid                                      Pulses high for 1 cycle when rx_data is valid
+//   .cmd_valid                                     Pulses 1 cycle when the entire frame is reassembled
+//   .cmd_dest_node   [1:0]                         Extracted destination node index (0-3)
+//   .cmd_payload     [PAYLOAD_BYTES*8-1:0]         Concatenated payload bytes (MSB first)
+//   .cmd_payload_len [$clog2(PAYLOAD_BYTES+1)-1:0] Constant indicating payload size
 
 `timescale 1ns / 1ps
 
@@ -44,9 +44,9 @@ module uart_cmd_parser #(
     localparam integer CNT_W = $clog2(PAYLOAD_BYTES + 1);
 
     // -------------------------------------------------------------------------
-    // Binary framing:
-    //   State 0: wait for command byte (top nibble 0xA = 4'hA means "send")
-    //   State 1..PAYLOAD_BYTES: collect payload bytes
+    // Binary framing state machine:
+    //   State 0: wait for command header byte (0xA0 to 0xA3)
+    //   State 1..PAYLOAD_BYTES: collect incoming payload bytes into shift register
     // -------------------------------------------------------------------------
     logic [CNT_W-1:0]         byte_cnt;   // 0 = expecting cmd, 1..PB = payload
     logic [PAYLOAD_BYTES*8-1:0] payload_r;
