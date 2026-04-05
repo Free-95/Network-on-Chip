@@ -1,10 +1,10 @@
 // router_5port.sv
-// Top-level wrapper for a 5-port NoC router node designed for a 2D mesh topology.
-// It integrates 5 input FIFOs for buffering, 5 XY routing units for coordinate-based 
-// path calculation, a 5x5 round-robin switch allocator for conflict resolution, 
-// and a combinational crossbar switch to physically route flits from inputs to 
-// outputs based on arbiter grants. 
-// Port indices: 0=Local, 1=North, 2=South, 3=East, 4=West
+//   Top-level wrapper for a 5-port NoC router node designed for a 2D mesh topology.
+//   It integrates 5 input FIFOs for buffering, 5 XY routing units for coordinate-based 
+//   path calculation, a 5x5 round-robin switch allocator for conflict resolution, 
+//   and a combinational crossbar switch to physically route flits from inputs to 
+//   outputs based on arbiter grants. 
+//   Port indices: 0=Local, 1=North, 2=South, 3=East, 4=West
 
 `timescale 1ns / 1ps
 
@@ -75,7 +75,7 @@ module router_5port #(
                 .out_port_req(raw_xy_reqs[i])
             );
 
-            assign masked_reqs[i] = (~fifo_empty[i]) ? raw_xy_reqs[i] : 5'b00000;
+            assign masked_reqs[i] = fifo_empty[i] ? 5'b00000 : raw_xy_reqs[i];
 
         end
     endgenerate
@@ -87,13 +87,18 @@ module router_5port #(
         .clk      (clk),
         .rst_n    (rst_n),
         .req_in   (masked_reqs),
+        .tx_flit_arr  (tx_flit_arr),   
+        .tx_valid_arr (tx_valid_arr),  
+        .tx_ready_arr (tx_ready_arr),  
         .grant_out(crossbar_grants)
     );
 
     // ========================================================================
     // STAGE 3: Data Traversal (Crossbar)
     // ========================================================================
-    crossbar_switch #(.DATA_WIDTH(DATA_WIDTH)) crossbar_inst (
+    crossbar_switch #(
+        .DATA_WIDTH(DATA_WIDTH)
+    ) crossbar_inst (
         .fifo_data_in   (fifo_data_out),
         .arbiter_sel    (crossbar_grants),
         .router_data_out(tx_flit_arr)
@@ -106,7 +111,7 @@ module router_5port #(
 
     generate
         for (out_port = 0; out_port < 5; out_port = out_port + 1) begin: gen_tx_valid   
-            assign tx_valid_arr[out_port] = (crossbar_grants[out_port] != 0);
+            assign tx_valid_arr[out_port] = (crossbar_grants[out_port] != 5'b0);
         end
 
         for (in_port = 0; in_port < 5; in_port = in_port + 1) begin: gen_fifo_rd

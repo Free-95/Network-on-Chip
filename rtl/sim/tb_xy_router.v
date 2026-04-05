@@ -1,10 +1,10 @@
 // tb_xy_router.v
-// Testbench for xy_router. Exhaustively tests all 16 combinations of
-// (curr_x, curr_y) in the 2x2 mesh (coords 0..1) against every possible
-// (dest_x, dest_y), verifying correct one-hot port selection. Additional
-// directed tests confirm: X resolves before Y, North/South polarity, all four
-// corner-to-corner diagonal paths, and Local ejection at every node.
-// Purely combinational DUT — all checks use #1 propagation delay.
+//   Testbench for xy_router. Exhaustively tests all 16 combinations of
+//   (curr_x, curr_y) in the 2x2 mesh (coords 0..1) against every possible
+//   (dest_x, dest_y), verifying correct one-hot port selection. Additional
+//   directed tests confirm: X resolves before Y, North/South polarity, all four
+//   corner-to-corner diagonal paths, and Local ejection at every node.
+//   Purely combinational DUT — all checks use #1 propagation delay.
 
 `timescale 1ns / 1ps
 

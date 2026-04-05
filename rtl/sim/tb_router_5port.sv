@@ -1,9 +1,8 @@
 // tb_router_5port.sv 
-// Comprehensive testbench for verifying the 5-port NoC router node.
-// Written specifically for a 2x2 mesh architecture where COORD_WIDTH = 1.
-// Validates edge-case physical routing (corner nodes), max theoretical 
-// parallel throughput, 5-way arbiter contention, and flow control.
-// ============================================================================
+//   Comprehensive testbench for verifying the 5-port NoC router node.
+//   Written specifically for a 2x2 mesh architecture where COORD_WIDTH = 1.
+//   Validates edge-case physical routing (corner nodes), max theoretical 
+//   parallel throughput, 5-way arbiter contention, and flow control.
 
 `timescale 1ns / 1ps
 

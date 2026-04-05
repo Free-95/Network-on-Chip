@@ -14,20 +14,19 @@
 `timescale 1ns / 1ps
 
 module mesh_fabric_noc #(
-    parameter MESH_X      = 2,
-    parameter MESH_Y      = 2,
-    parameter DATA_WIDTH  = 34,
-    parameter COORD_WIDTH = 1,  
-    parameter FIFO_DEPTH  = 8,
-    parameter TS_WIDTH    = 16
+    parameter MESH_X          = 2,
+              MESH_Y          = 2,
+              DATA_WIDTH      = 34,
+              COORD_WIDTH     = 1,  
+              FIFO_DEPTH      = 8,
+              TS_WIDTH        = 16,
+              FLIT_TYPE_WIDTH = 2,
+              PAYLOAD_WIDTH   = DATA_WIDTH - (2 * COORD_WIDTH) - FLIT_TYPE_WIDTH,
+              CORE_DATA_WIDTH = PAYLOAD_WIDTH * 2,
+              NUM_NODES       = MESH_X * MESH_Y
 )(
     input  logic clk,
     input  logic rst_n,
-
-    localparam FLIT_TYPE_WIDTH = 2;
-    localparam PAYLOAD_WIDTH   = DATA_WIDTH - (2 * COORD_WIDTH) - FLIT_TYPE_WIDTH;
-    localparam CORE_DATA_WIDTH = PAYLOAD_WIDTH * 2;
-    localparam NUM_NODES       = MESH_X * MESH_Y;
 
     // TX Ports (Core -> NoC)
     input  logic [NUM_NODES-1:0] [CORE_DATA_WIDTH-1:0] core_tx_data,
@@ -49,13 +48,13 @@ module mesh_fabric_noc #(
     // Internal Topology Wiring Matrix
     // mesh_tx_flit[X][Y][PORT]
     // Ports: 0=Local, 1=North, 2=South, 3=East, 4=West
-    logic [DATA_WIDTH-1:0] mesh_rx_flit  [MESH_X][MESH_Y][5];
-    logic                  mesh_rx_valid [MESH_X][MESH_Y][5];
-    logic                  mesh_rx_ready [MESH_X][MESH_Y][5];
+    logic [4:0][DATA_WIDTH-1:0] mesh_rx_flit  [MESH_X][MESH_Y];
+    logic [4:0]                 mesh_rx_valid [MESH_X][MESH_Y];
+    logic [4:0]                 mesh_rx_ready [MESH_X][MESH_Y];
 
-    logic [DATA_WIDTH-1:0] mesh_tx_flit  [MESH_X][MESH_Y][5];
-    logic                  mesh_tx_valid [MESH_X][MESH_Y][5];
-    logic                  mesh_tx_ready [MESH_X][MESH_Y][5];
+    logic [4:0][DATA_WIDTH-1:0] mesh_tx_flit  [MESH_X][MESH_Y];
+    logic [4:0]                 mesh_tx_valid [MESH_X][MESH_Y];
+    logic [4:0]                 mesh_tx_ready [MESH_X][MESH_Y];
 
     genvar x, y;
     generate

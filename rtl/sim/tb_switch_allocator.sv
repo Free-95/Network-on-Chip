@@ -1,13 +1,13 @@
 // tb_switch_allocator.sv
-// SystemVerilog Testbench for the 5-port Switch Allocator.
-// Tests: 
-// 1. Reset and zero-request behavior.
-// 2. Single isolated requests.
-// 3. Simultaneous non-conflicting requests (Bijection).
-// 4. Heavy Contention: All 5 inputs fighting for Output 0 to verify 
-//    perfect Round-Robin rotation and wrap-around over 6 clock cycles.
-// 5. Independent Contention: Output 0 and Output 1 experiencing different
-//    levels of contention to prove the 5 arbiters operate independently.
+//   SystemVerilog Testbench for the 5-port Switch Allocator.
+//   Tests: 
+//   1. Reset and zero-request behavior.
+//   2. Single isolated requests.
+//   3. Simultaneous non-conflicting requests (Bijection).
+//   4. Heavy Contention: All 5 inputs fighting for Output 0 to verify 
+//      perfect Round-Robin rotation and wrap-around over 6 clock cycles.
+//   5. Independent Contention: Output 0 and Output 1 experiencing different
+//      levels of contention to prove the 5 arbiters operate independently.
 
 `timescale 1ns / 1ps
 

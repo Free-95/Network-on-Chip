@@ -1,8 +1,8 @@
 // tb_input_buffer_fifo.v
-// Testbench for input_buffer_fifo. Verifies: reset behaviour, sequential writes,
-// sequential reads, full assertion and write-blocking, empty assertion and
-// read-blocking, simultaneous read+write (count stability), and wrap-around of
-// circular pointers.
+//   Testbench for input_buffer_fifo. Verifies: reset behaviour, sequential writes,
+//   sequential reads, full assertion and write-blocking, empty assertion and
+//   read-blocking, simultaneous read+write (count stability), and wrap-around of
+//   circular pointers.
 
 `timescale 1ns / 1ps
 

@@ -1,9 +1,7 @@
 // input_buffer_fifo.v
-// Synchronous circular FIFO used as the input buffer at each of the 5 input ports
-// of a NoC router. Stores incoming flits during congestion or arbitration stalls.
-// Parameterized data width and depth. Uses a fill-count register for full/empty
-// detection. Write pointer advances on wr_en when not full; read pointer advances
-// on rd_en when not empty.
+//   Synchronous circular FIFO used as the input buffer at each of the 5 input ports
+//   of a NoC router. Stores incoming flits during congestion or arbitration stalls.
+//   Strictly adheres to Valid/Ready handshake semantics to prevent flit duplication.
 
 `timescale 1ns / 1ps
 
@@ -25,18 +23,14 @@ module input_buffer_fifo #(
 );
 
     reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
-    reg [PTR_WIDTH-1:0]  wr_ptr;
-    reg [PTR_WIDTH-1:0]  rd_ptr;
+    reg [PTR_WIDTH-1:0]  wr_ptr, rd_ptr;
     reg [PTR_WIDTH:0]    count;
 
     assign full  = (count == DEPTH);
     assign empty = (count == 0);
     assign data_out = mem[rd_ptr];
 
-    // Allow write if not full, OR if full but simultaneously reading
-    wire write_allow = wr_en && (!full || rd_en);
-
-    // Allow read if not empty
+    wire write_allow = wr_en && !full;
     wire read_allow  = rd_en && !empty;
 
     always @(posedge clk or negedge rst_n) begin

@@ -1,10 +1,10 @@
 // crossbar_switch.sv
-// Purely combinational 5x5 multiplexer matrix. Routes flit data from any of
-// the 5 input FIFOs (Local, North, South, East, West) to any of the 5 output
-// ports. Each output port has a dedicated 5-to-1 mux whose select line is the
-// one-hot grant vector produced by that port's Round-Robin Arbiter. Up to 5
-// simultaneous non-conflicting transfers are supported per cycle. No registers;
-// output is valid within one combinational delay of the arbiter grant settling.
+//   Purely combinational 5x5 multiplexer matrix. Routes flit data from any of
+//   the 5 input FIFOs (Local, North, South, East, West) to any of the 5 output
+//   ports. Each output port has a dedicated 5-to-1 mux whose select line is the
+//   one-hot grant vector produced by that port's Round-Robin Arbiter. Up to 5
+//   simultaneous non-conflicting transfers are supported per cycle. No registers;
+//   output is valid within one combinational delay of the arbiter grant settling.
 
 `timescale 1ns / 1ps
 

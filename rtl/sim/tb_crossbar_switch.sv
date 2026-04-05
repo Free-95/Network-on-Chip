@@ -1,11 +1,11 @@
 // tb_crossbar_switch.sv
-// Testbench for crossbar_switch. Because the DUT is purely combinational,
-// all checks are done with a small #1 propagation delay after driving inputs —
-// no clock needed for correctness. 
-// Tests: each one-hot grant selects the correct FIFO for every
-// output port, all 5 output ports route simultaneously and independently,
-// zero-grant (no bits set) outputs zero data, and changing grants mid-sim
-// immediately propagates.
+//   Testbench for crossbar_switch. Because the DUT is purely combinational,
+//   all checks are done with a small #1 propagation delay after driving inputs —
+//   no clock needed for correctness. 
+//   Tests: each one-hot grant selects the correct FIFO for every
+//   output port, all 5 output ports route simultaneously and independently,
+//   zero-grant (no bits set) outputs zero data, and changing grants mid-sim
+//   immediately propagates.
 
 `timescale 1ns / 1ps
 
