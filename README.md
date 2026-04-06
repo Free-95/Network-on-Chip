@@ -207,7 +207,12 @@ To demonstrate real-time capability, a custom **UART Protocol Bridge** was integ
 
    <img width="1919" height="961" alt="Screenshot 2026-04-06 054844" src="https://github.com/user-attachments/assets/8b35e220-2807-44b7-8bfd-21d797360171" />
 
-_The hex output `B1 48 4F 57 00 03` confirms successful traversal from Node 0 to Node 1 and back, taking exactly `0x03` (3) clock cycles._
+_The hex output `B1 48 4F 57 00 03` confirms successful traversal from Node 0 to Node 1 and back._ 
+
+Here is what it represents:
+- `B1`: Response from Node 1
+- `48 4F 57`: Payload
+- `00 03`: Latency (in clock cycles)
 
 **Note:** As the custom designed UART module only parses hexadecimal or binary characters, we have used _HTerm terminal software_ to demonstrate the communication between the 4 nodes of Network-on-Chip.
 
@@ -285,3 +290,9 @@ To transition this MVP into a production-grade interconnect for advanced AI mult
 5. Click on _Generate Bitstream_ to complete the FPGA Design Flow and program the Artix-7 board through _Hardware Manager_.
 6. Open the HTerm Serial Terminal at `115200` Baud, configure to send/receive HEX, and transmit `A1 48 4F 57` to initiate a visual ping to Node 1.
 7. Observe the output on the receiver window, and test further by sending more such flits.
+
+---
+
+Click to watch the video 👇
+
+[<img width="600" height="300" alt="Screenshot 2026-04-06 073100" src="https://github.com/user-attachments/assets/db88dd0d-d22b-4e75-91a4-974e73622c92" />](https://drive.google.com/file/d/1MGtnVGMnL-R3wZSs0krQGpGEKp4HxZ-9/view?usp=sharing)
