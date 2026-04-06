@@ -157,10 +157,10 @@ graph LR
 
 ### Data Path & Packet Structure
 To meet the technical expectations, the data path is strictly defined:
-- **Physical Link Width:** 34 bits (1-bit X coord, 1-bit Y coord, 2-bit Flit Type, 30-bit Payload).
+- **Physical Link Width:** 34 bits (1-bit X coordinate, 1-bit Y coordinate, 2-bit Flit Type, 30-bit Payload).
 - **Packet Size:** 3 Flits (Head, Body, Tail).
 - **Core Interface Width:** 60 bits (30-bit Body + 30-bit Tail).
-- [cite_start]**Arithmetic Justification:** The system utilizes fixed-point bitwise operations for routing, allocation, and timestamping. Floating-point is unnecessary for NoC interconnect logic and would needlessly waste LUTs and power.
+- **Arithmetic Justification:** The system utilizes fixed-point bitwise operations for routing, allocation, and timestamping. Floating-point is unnecessary for NoC interconnect logic and would needlessly waste LUTs and power.
 
 ---
 
@@ -174,60 +174,114 @@ The design utilizes a comprehensive SystemVerilog verification suite. Verificati
 - **Flow Control:** Upstream backpressure (FIFO full) and downstream stalls (Core busy).
 
 **Simulation Output:**
-```text
-[PLACEHOLDER: Paste the terminal output showing the "ALL TESTS PASSED" scorecard from your `tb_top_noc.sv` and `tb_uart_bridge.sv` simulations here]
-[PLACEHOLDER: Insert GTKWave/Vivado Waveform Screenshot here showing a packet transfer]
-```
+1. _NoC Top Module Test_
+
+   <img width="630" height="785" alt="top_noc" src="https://github.com/user-attachments/assets/30f07bd8-e71c-44a5-9952-5c1e9f44e7f1" />
+
+2. _UART Standalone Loopback Test_
+  
+   <img width="542" height="548" alt="phase 1" src="https://github.com/user-attachments/assets/07c4d6e9-fb8d-4050-a5eb-b5ef802ef627" />
+
+3. _UART Protocol Bridge Test_
+  
+   <img width="661" height="508" alt="phase 2" src="https://github.com/user-attachments/assets/69b50dc5-1811-4fc8-a5b1-dd9f3211e821" />
+
+**Data Transfer Waveform:**
+
+   <img width="1546" height="400" alt="waveform" src="https://github.com/user-attachments/assets/8892c21f-53e4-43fb-8c00-cc8d79cb6542" />
+
+**Note:** Each design module for NoC is tested individually, covering all edge cases for the respective module. The testbenches of which can be found [here](rtl/sim). Similarly, the test wrapper sub-modules are also tested individually, with their testbenches present [here](test_wrapper/sim).
+
+---
 
 ## 4. Hardware Implementation & Real-Time Capability
 
 The IP block is successfully deployed on a **Xilinx Artix-7 (xc7a100tcsg324-1)** FPGA.
 To demonstrate real-time capability, a custom **UART Protocol Bridge** was integrated into Node 0.
-1. The PC sends a binary payload via UART (`0xA3` to target Node 3).
+1. The PC sends a binary payload via UART (`0xA1` to target Node 1).
 2. Node 0 packetizes it and routes it across the physical FPGA fabric.
-3. Node 3 extracts it, embeds its Node ID, and bounces it back.
+3. Node 1 extracts it, embeds its Node ID, and bounces it back.
 4. Node 0 ejects the packet, calculates latency, and transmits the payload + latency back to the PC via UART.
 
 **Hardware Test Output (HTerm)**
-[PLACEHOLDER: Insert Screenshot of HTerm showing the Transmit and Receive hex bytes]
-_The hex output `B3 41 42 43 00 1E` confirms successful traversal from Node 0 to Node 3 and back, taking exactly `0x1E` (30) clock cycles.
+
+   <img width="1919" height="961" alt="Screenshot 2026-04-06 054844" src="https://github.com/user-attachments/assets/8b35e220-2807-44b7-8bfd-21d797360171" />
+
+_The hex output `B1 48 4F 57 00 03` confirms successful traversal from Node 0 to Node 1 and back, taking exactly `0x03` (3) clock cycles._
+
+**Note:** As the custom designed UART module only parses hexadecimal or binary characters, we have used _HTerm terminal software_ to demonstrate the communication between the 4 nodes of Network-on-Chip.
 
 ---
 
 ## 5. Performance Metrics & Resource Utilization
 
-**FPGA Resource Utilization**
+### FPGA Resource Utilization
+
 The architecture is designed for hardware efficiency, utilizing minimal logic to allow maximum area for AI/ML compute cores.
 | Resource | Utilization | Available | % Used |
 | -------- | ----------- | --------- | ------ |
-| **LUTs** | [PLACEHOLDER] | 63,400 | [%] |
-| **FFs** | [PLACEHOLDER] | 126,800 | [%] |
-| **BRAM** | [PLACEHOLDER] | 135 | [%] |
+| **LUTs** | 1,731 | 63,400 | 2.73 |
+| **FFs** | 3,656 | 126,800 | 2.88 |
+| **BRAM** | 0 | 135 | 0 |
 
-**Power-Performance Trade-offs**
-[PLACEHOLDER: Insert Total Power from Vivado Report]
+   <img width="1507" height="91" alt="util" src="https://github.com/user-attachments/assets/eb6c9b94-a5bc-4b48-93c9-bf83b5afda3c" />
+
+### Power-Performance Trade-offs
+
+**Total Power:** 0.127 W
+
+   <img width="792" height="437" alt="power" src="https://github.com/user-attachments/assets/a14d758a-a0e9-46ae-9809-bb9259bd4706" />
+
 **Discussion:** The purely combinational crossbar and XY routing units ensure minimal dynamic power draw by avoiding unnecessary register stages. The use of Dimension-Order Routing sacrifices some peak throughput under heavy congestion compared to adaptive routing, but significantly reduces LUT utilization and static power consumption, making it ideal for edge AI deployment.
 
-**Throughput & Latency**
+### Throughput & Latency
+   
+   <img width="1017" height="198" alt="time" src="https://github.com/user-attachments/assets/98a6923f-f648-4a42-930a-189ed40384cd" />
+
 - **Clock Frequency:** 100 MHz (Timing constraints fully met).
-- **Latency:** Base 1-hop latency is 4 clock cycles (40ns).
+- **Latency:** Base 1-hop latency is 3 clock cycles (30ns).
 - **Peak Throughput:** 100 million flits/sec per link (3.4 Gbps per directional port).
+
+#### 🧮 Peak Throughput Calculation
+
+The peak throughput of the Network-on-Chip is calculated based on the physical data path width and the global clock frequency. 
+
+**Hardware Parameters:**
+* **Global Clock ($f_{clk}$):** 100 MHz ($10^8$ cycles/second)
+* **Physical Link Width:** 34 bits per flit
+* **Transfer Rate:** 1 flit per clock cycle per port
+
+**Base Flit Rate (Per Port):**
+Each router port can transmit one flit per clock cycle.
+> $100,000,000 \text{ cycles/sec} \times 1 \text{ flit/cycle} = \mathbf{100 \text{ Million flits/sec}}$
+
+**Raw Data Throughput (Per Port):**
+To find the raw bandwidth, we multiply the flit rate by the physical width of the flit.
+> $100,000,000 \text{ flits/sec} \times 34 \text{ bits/flit} = 3,400,000,000 \text{ bits/sec}$
+> **= 3.4 Gbps per directional port**
+
+**Total Fabric Bandwidth:**
+In a 2x2 Mesh topology, there are 4 internal bi-directional links (8 directional wires) and 4 local injection/ejection ports connecting the processing cores. The theoretical maximum data moving through the entire fabric simultaneously is:
+> $(8 \text{ Internal Links} + 4 \text{ Local Links}) \times 3.4 \text{ Gbps}$ 
+> **= 40.8 Gbps Total Peak Fabric Bandwidth**
 
 ---
 
 ## 6. Scalability Roadmap 
 
 To transition this MVP into a production-grade interconnect for advanced AI multi-core systems, the following architectural enhancements are planned:
-1. Scalability to 8+ Cores: Parameterize the `COORD_WIDTH` and `genvar` loops to automatically synthesize 4x4 (16 cores) or 8x8 (64 cores) topologies without modifying the underlying router micro-architecture.
-2. Quality of Service (QoS): Implement Virtual Channels (VCs) within the input FIFOs to prioritize critical control packets (e.g., RISC-V interrupts) over bulk data transfers (e.g., Neural Network weight streaming).
-3. Dynamic/Adaptive Routing: Replace the static XY router with a minimal adaptive router (e.g., Turn Model or Odd-Even routing) to navigate around congested hotspots during heavy machine learning workloads.
-4. Congestion Control & Power-Aware Routing: Implement clock-gating on unused router ports and introduce source-throttling mechanisms when downstream latency timestamps exceed a critical threshold.
+1. **Scalability to 8+ Cores**: Parameterize the `COORD_WIDTH` and `genvar` loops to automatically synthesize 4x4 (16 cores) or 8x8 (64 cores) topologies without modifying the underlying router micro-architecture.
+2. **Quality of Service (QoS)**: Implement Virtual Channels (VCs) within the input FIFOs to prioritize critical control packets (e.g., RISC-V interrupts) over bulk data transfers (e.g., Neural Network weight streaming).
+3. **Dynamic/Adaptive Routing**: Replace the static XY router with a minimal adaptive router (e.g., Turn Model or Odd-Even routing) to navigate around congested hotspots during heavy machine learning workloads.
+4. **Congestion Control & Power-Aware Routing**: Implement clock-gating on unused router ports and introduce source-throttling mechanisms when downstream latency timestamps exceed a critical threshold.
 
 ---
 
 ## 7. Instructions to Run
 1. Clone the repository.
-2. Run `iverilog -o sim.out <all_sv_files>` to run the testbenches.
-3. To deploy to FPGA, open Vivado, load the source files, and apply `noc_constraints.xdc`.
-4. Generate Bitstream and program the Artix-7 board.
-5. Open a Serial Terminal at `115200` Baud, configure to send/receive HEX, and transmit `A3 48 45 4C` to initiate a visual ping to Node 3.
+2. Add the `.v` and `.sv` files present in [rtl](rtl/) and [test_wrapper](test_wrapper/) directory as design sources in Vivado project.
+3. Add the testbench files present in [rtl/sim](rtl/sim) and [test_wrapper/sim](test_wrapper/sim) as simulation sources in the same project for simulating each module individually as well as collectively through top module.
+4. To deploy on FPGA, set the `top_fpga_uart_noc` module as top module and add the constraints file `constraints.xdc`.
+5. Click on _Generate Bitstream_ to complete the FPGA Design Flow and program the Artix-7 board through _Hardware Manager_.
+6. Open the HTerm Serial Terminal at `115200` Baud, configure to send/receive HEX, and transmit `A1 48 4F 57` to initiate a visual ping to Node 1.
+7. Observe the output on the receiver window, and test further by sending more such flits.
