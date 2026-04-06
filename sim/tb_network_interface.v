@@ -160,15 +160,6 @@ module tb_network_interface;
         router_rx_valid = 1'b1;
         router_rx_flit  = {1'b0, 1'b1, TYPE_HEAD, {(PAYLOAD_WIDTH-TS_WIDTH){1'b0}}, (dut.ts_counter - 16'd15)};
         @(negedge clk);
-        
-        // Verify Latency
-        if (latency_valid && latency_cycles_out === 16'd15) begin
-            $display("PASS [%0t] Test 2, Latency correctly calculated as 15 cycles", $time); 
-            pass_count = pass_count + 1;
-        end else begin
-            $display("FAIL [%0t] Test 2, Latency failed. Expected 15, Got %0d", $time, latency_cycles_out); 
-            fail_count = fail_count + 1;
-        end
 
         // Inject Body
         router_rx_flit = {1'b0, 1'b1, TYPE_BODY, 30'h3FFF_FFFF};
@@ -178,6 +169,15 @@ module tb_network_interface;
         router_rx_flit = {1'b0, 1'b1, TYPE_TAIL, 30'h0000_0000};
         @(negedge clk);
         router_rx_valid = 1'b0;
+
+        // Verify Latency
+        if (latency_valid && latency_cycles_out === 16'd15) begin
+            $display("PASS [%0t] Test 2, Latency correctly calculated as 15 cycles", $time); 
+            pass_count = pass_count + 1;
+        end else begin
+            $display("FAIL [%0t] Test 2, Latency failed. Expected 15, Got %0d", $time, latency_cycles_out); 
+            fail_count = fail_count + 1;
+        end
 
         // Verify Core received reassembled payload
         if (core_rx_valid && core_rx_data === {30'h3FFF_FFFF, 30'h0000_0000}) begin

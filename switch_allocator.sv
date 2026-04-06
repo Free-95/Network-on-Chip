@@ -118,7 +118,7 @@ module switch_allocator #(
             // Detect if a TAIL flit is successfully leaving this output port
             assign release_lock = tx_valid_arr[out_port] && 
                                   tx_ready_arr[out_port] && 
-                                  (tx_flit_arr[out_port][DATA_WIDTH-(2*COORD_WIDTH)-1 -: FLIT_TYPE_WIDTH] == TYPE_TAIL);
+                                  (((tx_flit_arr[out_port] >> (DATA_WIDTH - (2*COORD_WIDTH) - FLIT_TYPE_WIDTH)) & 2'b11) == TYPE_TAIL);
 
             round_robin_arbiter #(
                 .PORTS(5)

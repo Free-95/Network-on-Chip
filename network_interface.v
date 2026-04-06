@@ -64,7 +64,7 @@ module network_interface #(
     reg [TS_WIDTH-1:0] ts_counter;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) ts_counter <= 0;
-        else        ts_counter <= ts_counter + {{(TS_WIDTH-1){1'b0}}, 1'b1};
+        else        ts_counter <= ts_counter + 1;
     end
 
     // ========================================================================
@@ -163,7 +163,6 @@ module network_interface #(
             latency_valid      <= 1'b0;
             latency_cycles_out <= 0;
         end else begin
-            latency_valid <= 1'b0;
 
             case (rx_state)
                 RX_HEAD: begin
@@ -171,7 +170,6 @@ module network_interface #(
                     if (router_rx_valid && router_rx_ready && rx_flit_type == TYPE_HEAD) begin
                         // Extract generation timestamp and calculate latency
                         latency_cycles_out <= ts_counter - rx_payload[TS_WIDTH-1:0];
-                        latency_valid      <= 1'b1;
                         rx_state           <= RX_BODY;
                     end
                 end
@@ -192,6 +190,7 @@ module network_interface #(
                         // Packet fully reassembled, pause RX and push to core
                         router_rx_ready <= 1'b0; 
                         core_rx_valid   <= 1'b1;
+                        latency_valid   <= 1'b1;
                         rx_state        <= RX_PUSH;
                     end
                 end
@@ -200,6 +199,7 @@ module network_interface #(
                     if (core_rx_valid && core_rx_ready) begin
                         // Core accepted the data, open router gates for next packet
                         core_rx_valid   <= 1'b0;
+                        latency_valid   <= 1'b0;
                         router_rx_ready <= 1'b1;
                         rx_state        <= RX_HEAD;
                     end
